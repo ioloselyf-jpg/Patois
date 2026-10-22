@@ -154,13 +154,13 @@ const D=[
 const SHEET={
  2:{row:"Fried Chicken Wings",likely:["gluten","mustard"],check:[]},
  3:{row:"Ripe Plantain",likely:[],check:[]},
- 4:{row:"Callalloo Fritter Bites",likely:["celery"],check:["gluten","eggs","soy"]},
- 6:{row:"Likkle Dutty Goat Patty",likely:["gluten","eggs","milk"],check:["celery","mustard"]},
- 7:{row:"Peppa Prawn",likely:["celery","gluten","crustaceans"],check:["milk","soy"]},
- 8:{row:"Seabass",likely:["celery","fish","sulphites"],check:["mustard"]},
- 9:{row:"Beef Short Rib",likely:["celery","gluten","sulphites"],check:["soy","mustard","eggs"]},
- 10:{row:"Butterbean & Pumpkin Curry",likely:["mustard"],check:["celery","milk"]},
- 11:{row:"Jerk Bird Plate",likely:["celery","sulphites"],check:["soy","gluten"]}
+ 4:{row:"Callalloo Fritter Bites",likely:["celery"],check:[]},
+ 6:{row:"Likkle Dutty Goat Patty",likely:["gluten","eggs","milk"],check:[]},
+ 7:{row:"Peppa Prawn",likely:["celery","gluten","crustaceans"],check:[]},
+ 8:{row:"Seabass",likely:["celery","fish","sulphites"],check:[]},
+ 9:{row:"Beef Short Rib",likely:["celery","gluten","sulphites"],check:[]},
+ 10:{row:"Butterbean & Pumpkin Curry",likely:["mustard"],check:[]},
+ 11:{row:"Jerk Bird Plate",likely:["celery","sulphites"],check:[]}
 };
 D.forEach(d=>{const x=SHEET[d.id];if(x){d.src="sheet";d.row=x.row;d.likely=x.likely;d.check=x.check}else{d.src="draft";d.check=[...new Set([...d.likely,...d.check])];d.likely=[]}});
 const money=p=>"£"+p.toFixed(2);
