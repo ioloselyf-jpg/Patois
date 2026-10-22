@@ -78,6 +78,8 @@ button:focus-visible,summary:focus-visible,input:focus-visible,[tabindex]:focus-
 
 /* quiz */
 .q{background:var(--card);border:2px solid var(--fg);border-radius:18px;padding:18px}
+.opt.sel{border-color:var(--mustard);background:color-mix(in srgb,var(--mustard) 25%,transparent)}
+.field{flex:1;min-width:120px;font:16px var(--f-body);padding:11px 14px;border-radius:12px;border:2px solid var(--line);background:var(--card);color:var(--fg)}
 .q h3{font-size:19px;line-height:1.3;margin:6px 0 14px}
 .opts{display:grid;gap:8px}
 .opt{font:500 14.5px var(--f-body);text-align:left;padding:12px 14px;border-radius:12px;border:2px solid var(--line);background:transparent;color:var(--fg);cursor:pointer}
@@ -86,7 +88,7 @@ button:focus-visible,summary:focus-visible,input:focus-visible,[tabindex]:focus-
 .fb{margin:12px 0 0;font-size:13.5px}
 .score{font:600 40px var(--f-display);color:var(--green)}
 .miss{margin:8px 0 0;padding:0;list-style:none;display:grid;gap:6px}
-.miss li{background:var(--card);border:1.5px solid var(--line);border-radius:10px;padding:8px 12px;font-size:13.5px}
+.miss li{line-height:1.45;background:var(--card);border:1.5px solid var(--line);border-radius:10px;padding:8px 12px;font-size:13.5px}
 
 /* allergens + menu */
 .group{margin:14px 0 6px;font-size:14px;font-weight:600}
@@ -203,50 +205,165 @@ function wireCards(){
 }
 
 /* ---------- Quiz ---------- */
-let Q={qs:[],i:0,score:0,miss:[],done:false,answered:false};
+const MAINS=D.filter(d=>!d.extra);
 const pick=(a,n)=>shuffle(a).slice(0,n);
-function makeQs(){
-  const pool=D.filter(d=>!d.extra),qs=[];
-  const T=["price","name","allergen","heat"];
-  const dishes=shuffle(pool);
-  for(let i=0;i<10;i++){
-    const d=dishes[i%dishes.length],t=T[i%T.length];
-    if(t==="price"){
-      const wrong=pick(pool.filter(x=>x.price!==d.price).map(x=>x.price).filter((v,j,a)=>a.indexOf(v)===j),3);
-      qs.push({q:`How much is the ${d.name}?`,opts:shuffle([d.price,...wrong]).map(money),ans:money(d.price),why:`${d.name} is ${money(d.price)}.`});
-    }else if(t==="name"){
-      const wrong=pick(pool.filter(x=>x.id!==d.id),3).map(x=>x.name);
-      qs.push({q:`Which dish is this? "${d.desc}"`,opts:shuffle([d.name,...wrong]),ans:d.name,why:`That is the ${d.name}, ${money(d.price)}.`});
-    }else if(t==="allergen"){
-      const k=(d.likely.length?pick(d.likely,1):d.check.length?pick(d.check,1):[pick(ALL.map(a=>a[0]).filter(a=>!d.likely.includes(a)&&!d.check.includes(a)),1)[0]])[0];
-      const state=d.likely.includes(k)?"Likely contains it":d.check.includes(k)?"Ask the kitchen":"Nothing flagged";
-      qs.push({q:`${d.name}: what do we know about ${AN[k].toLowerCase()}?`,opts:["Likely contains it","Ask the kitchen","Nothing flagged"],ans:state,why:`${d.name}: ${AN[k]} is ${state.toLowerCase()} (draft data). Always confirm with the kitchen.`});
-    }else{
-      const lbl=["Not hot","Mild","Hot","Very hot"];
-      qs.push({q:`How hot is the ${d.name}?`,opts:lbl,ans:lbl[d.heat],why:`${d.name} is ${lbl[d.heat].toLowerCase()} (our estimate).`});
-    }
+const pick1=a=>a[Math.floor(Math.random()*a.length)];
+const words=s=>s.toLowerCase().replace(/[^a-z ]/g," ").split(" ").filter(w=>w.length>3);
+const dishText=d=>(d.name+" "+d.desc+" "+d.ing.join(" ")).toLowerCase();
+const distract=(d,n)=>[...shuffle(MAINS.filter(x=>x.id!==d.id&&x.s===d.s)),...shuffle(MAINS.filter(x=>x.id!==d.id&&x.s!==d.s))].slice(0,n);
+const foreignIng=(d,n)=>pick([...new Set(MAINS.filter(x=>x.id!==d.id).flatMap(x=>x.ing))].filter(w=>!/cheesecake|ice cream/i.test(w)&&!words(w).some(k=>dishText(d).includes(k))),n);
+const CATN={menu:"Dishes and ingredients",pantry:"Pantry and history",al:"Allergens",patois:"Patois, words and Nikkai"};
+const FACTS=[
+{c:"pantry",q:"What is sorrel?",a:"Dried hibiscus flower, tart like cranberry",w:["Sour cherry juice","Tamarind pulp","Pickled beetroot"],why:"Sorrel is a dried hibiscus flower, ruby red and tart, traditionally steeped with ginger and spices at Christmas."},
+{c:"pantry",q:"What is pimento also called?",a:"Allspice",w:["Paprika","Star anise","Cassia"],why:"Pimento is allspice. It tastes like clove, cinnamon, nutmeg and black pepper at once."},
+{c:"pantry",q:"Which herb is also called culantro, and is stronger than coriander?",a:"Chadon beni",w:["Thyme","Skellion","Callaloo"],why:"Chadon beni (culantro) is a Trinidadian staple, used in the seabass dressing and the salted fries."},
+{c:"pantry",q:"In Jamaica, what is callaloo?",a:"Amaranth greens",w:["Dasheen root","Okra pods","Pak choi"],why:"Jamaican callaloo is amaranth greens. In Trinidad it is a soup made with dasheen leaves."},
+{c:"pantry",q:"What is escovitch?",a:"A vinegar pickle of carrot, onion and Scotch bonnet over fried fish",w:["A smoked garlic butter","A coconut and lime marinade","A sweet pineapple glaze"],why:"Escovitch is a tangy vinegar pickle poured over fish."},
+{c:"pantry",q:"Which plantain is starchy and savoury, like a potato, and used for chips?",a:"Green plantain",w:["Ripe plantain"],why:"Green plantain is starchy and savoury. Ripe plantain (yellow with black skin) is sweet and caramelises when fried."},
+{c:"pantry",q:"What are the 'peas' in rice and peas?",a:"Kidney beans",w:["Chickpeas","Black-eyed peas","Green peas"],why:"Usually kidney beans (gungo peas at Christmas), cooked with coconut milk, thyme and scallion."},
+{c:"pantry",q:"What replaces croutons in the All Island Caesar?",a:"Hard dough crumbs",w:["Plantain crumbs","Shirley biscuit crumbs","Toasted coconut"],why:"Crumbs of Jamaican hard dough bread, a dense, slightly sweet loaf."},
+{c:"pantry",q:"What is mango chow?",a:"A Trinidadian street snack of mango with garlic, herbs, lime and pepper",w:["A mango hot sauce for jerk","A frozen mango dessert","A mango and rum punch"],why:"Mango chow is sharp, sweet and punchy. It comes with the Likkle Dutty Goat Patty."},
+{c:"pantry",q:"What tops the Vegan Toasted Coconut Ice Cream?",a:"Toasted coconut and Shirley biscuit crumbs",w:["Candied pineapple and shortbread","Toasted nuts and honey","Mango chow and lime zest"],why:"Shirley biscuits are a crisp, lightly sweet Jamaican biscuit."},
+{c:"pantry",q:"Which chilli is closest to Scotch bonnet for heat?",a:"Habanero",w:["Jalapeño","Padrón","Cayenne"],why:"Scotch bonnet sits in roughly the same heat range as a habanero, with a fruitier flavour."},
+{c:"pantry",q:"Why is it called a Scotch bonnet?",a:"It looks like a Tam o' Shanter bonnet",w:["It was first grown in Scotland","It is smoked in whisky barrels","It is named after a Jamaican farmer"],why:"The name comes from its resemblance to a Tam o' Shanter hat."},
+{c:"pantry",q:"What is a 'skellion'?",a:"Scallion (spring onion)",w:["A small shallot","A type of leek","A Scotch bonnet seed"],why:"Skellion is the Caribbean spelling and pronunciation of scallion. Jamaican scallion is thicker and sharper than the UK kind."},
+{c:"history",q:"Which wood is traditionally used to smoke jerk?",a:"Pimento wood",w:["Oak","Hickory","Applewood"],why:"Jerk is cooked slowly over pimento wood."},
+{c:"history",q:"Which Jamaican place is especially associated with pepper shrimp?",a:"Middle Quarters, St Elizabeth",w:["Montego Bay","Port Antonio","Kingston harbour"],why:"Roadside vendors in Middle Quarters sell pepper shrimp in bags."},
+{c:"history",q:"Who brought the curry tradition, including curried goat, to Jamaica?",a:"Indian indentured labourers",w:["Spanish settlers","Chinese traders","Lebanese merchants"],why:"Indian labourers arrived from 1845 and brought curry spice, roti and curried goat."},
+{c:"history",q:"Who is widely credited with developing jerk?",a:"The Maroons",w:["The Spanish","Indian labourers","Windrush arrivals"],why:"The Maroons, communities who escaped enslavement and lived in the mountains, blended Taíno cooking with African spice."},
+{c:"history",q:"The Taíno cooked on raised wooden frames called what, the root of the word 'barbecue'?",a:"Barbacoa",w:["Asado","Escabeche","Sofrito"],why:"Barbacoa is the Taíno word that gave us barbecue."},
+{c:"history",q:"When did the Empire Windrush arrive at Tilbury?",a:"1948",w:["1938","1958","1968"],why:"HMT Empire Windrush arrived in 1948 carrying people from across the Caribbean."},
+{c:"history",q:"When did England take Jamaica from Spain?",a:"1655",w:["1494","1759","1834"],why:"England captured the island in 1655. Spain had held it since 1509."},
+{c:"history",q:"Escovitch descends from which Spanish dish?",a:"Escabeche",w:["Gazpacho","Sofrito","Ceviche"],why:"Escovitch comes from Spanish escabeche, a pickled fish dish."},
+{c:"history",q:"Where does Basque cheesecake come from?",a:"San Sebastián, Spain",w:["Biarritz, France","Kingston, Jamaica","Naples, Italy"],why:"It was created in San Sebastián in northern Spain. The sorrel compote ties it back to Jamaica."},
+{c:"history",q:"What is Jamaica's national motto?",a:"Out of Many, One People",w:["One Love","Land We Love","Irie Forever"],why:"It is also a good description of Jamaican food."},
+{c:"history",q:"The Jamaican patty is often described as a meeting of which three things?",a:"British pasty, Indian spice and Scotch bonnet heat",w:["French pastry, Chinese five-spice and ginger","Spanish empanada, African yam and allspice","Cornish pasty, Italian herbs and paprika"],why:"Pasty from Britain, curry spice from India, heat from Scotch bonnet."},
+{c:"history",q:"Sorrel is traditionally linked with which time of year?",a:"Christmas",w:["Easter","Carnival","Independence Day"],why:"Sorrel is the red hibiscus drink of Jamaican Christmas."},
+{c:"history",q:"The Caesar salad is Mexican-American in origin. What does the All Island version change?",a:"Roasted scallion dressing and hard dough crumbs",w:["Smoked fish and plantain","Mango dressing and rice","Jerk chicken and coconut"],why:"A Jamaican reworking: scallion in the dressing and hard dough crumbs instead of croutons."},
+{c:"patois",q:"What does 'likkle' mean?",a:"Little",w:["Loud","Late","Lovely"],why:"Likkle means little."},
+{c:"patois",q:"What does 'nuff' mean?",a:"Plenty, lots of",w:["Nothing","Tough","Never"],why:"Likkle Plates, Nuff Flavour: small plates, plenty of flavour."},
+{c:"patois",q:"What does 'Beg yuh some' mean?",a:"Give me some, a request to share",w:["I beg your pardon","Save me a table","Please leave"],why:"Beg Yuh Some is the bigger plates section: Bigga plates. Come share."},
+{c:"patois",q:"What does 'Pon di side' mean?",a:"On the side",w:["In the middle","Under the table","Next door"],why:"Pon Di Side is the sides section."},
+{c:"patois",q:"On this menu, what does 'dutty' mean in Likkle Dutty Goat Patty?",a:"Gloriously indulgent (literally dirty)",w:["Very spicy","Burnt","Cold"],why:"Playful patois for something rich and unapologetic."},
+{c:"patois",q:"What does 'wah gwaan' mean?",a:"What's going on?",w:["Where's the food?","What's the price?","Who's cooking?"],why:"A friendly greeting."},
+{c:"patois",q:"What does 'irie' mean?",a:"All good, great",w:["Angry","Hungry","Late"],why:"Irie means all good."},
+{c:"nikkai",q:"Who is the owner and head chef of Patois?",a:"Nikkai Whyte",w:["Nikkai Brown","Nia Whyte","Nikki White"],why:"Nikkai Whyte, a self-taught chef based in Peckham."},
+{c:"nikkai",q:"Where did Patois begin in 2018?",a:"Nikkai's home kitchen in Peckham",w:["A Brixton market stall","A Shoreditch restaurant","A hotel kitchen in Mayfair"],why:"It started as a side project from her home kitchen and built a loyal following."},
+{c:"nikkai",q:"How did Nikkai learn to cook?",a:"She is self-taught",w:["Le Cordon Bleu","A Kingston catering college","A Michelin-star apprenticeship"],why:"Nikkai is a self-taught chef."},
+{c:"nikkai",q:"Which London residency did Patois take over in summer 2025?",a:"Kitchen No. 8 at BOXHALL City",w:["Dinerama in Shoreditch","Brixton Village Kitchen 3","Peckham Levels Hall"],why:"BOXHALL City, near Liverpool Street, runs rotating residencies for emerging chefs."},
+{c:"nikkai",q:"What is Patois' tagline?",a:"Food with a voice",w:["Taste of the island","Caribbean, reimagined","Big flavour, likkle price"],why:"Food with a voice. The name honours the Caribbean dialect of Nikkai's heritage."},
+{c:"nikkai",q:"Which of these is NOT one of Nikkai's signature dishes?",a:"Pineapple Chilli Wings",w:["Dutty Curry Patties","Jerk Chicken Spring Rolls","Jerk Mushroom Hummus"],why:"Her signatures are the Dutty Curry Patties, Jerk Chicken Spring Rolls and Jerk Mushroom Hummus."},
+{c:"nikkai",q:"Which traditions does Patois blend with Caribbean flavours?",a:"Asian, German and Chinese",w:["Italian, Greek and Turkish","Mexican, Peruvian and Cuban","Indian, Thai and Korean"],why:"Patois is a Jamaican fusion kitchen celebrating the cultural mix in Caribbean cooking."}
+];
+const KEYS=[["tiger prawns","prawns",7],["pineapple","pineapple",2],["callaloo","callaloo",4],["curried goat","goat",6],["beef short rib","short rib",9],["butter beans","butter beans",10],["kidney beans","kidney beans",12],["orange zest","orange zest",18],["Shirley biscuit crumbs","shirley",19],["tenderstem broccoli","tenderstem",15],["macaroni","macaroni",5],["hard dough crumbs","hard dough",14],["pimento","pimento",11]];
+const LBL=["Not hot","Mild","Hot","Very hot"];
+const ONE=Object.entries(Object.fromEntries(ALL.map(([k])=>[k,D.filter(d=>d.likely.includes(k))]))).filter(([k,a])=>a.length===1);
+const mc=(cat,q,ans,wrong,why)=>({t:"mc",cat,q,ans,opts:shuffle([ans,...wrong]),why});
+const GEN={
+ menu:[
+  ()=>{const d=pick1(MAINS);const w=[...new Set(distract(d,8).map(x=>x.price))].filter(p=>p!==d.price).slice(0,3).map(money);return mc("menu",`How much is the ${d.name}?`,money(d.price),w,`${d.name} is ${money(d.price)}.`)},
+  ()=>{const d=pick1(MAINS);return {t:"type",cat:"menu",q:`Type the price of the ${d.name}, numbers only.`,ans:d.price,why:`${d.name} is ${money(d.price)}.`}},
+  ()=>{const d=pick1(MAINS);return mc("menu",`Which dish is this? "${d.desc}"`,d.name,distract(d,3).map(x=>x.name),`That is the ${d.name}, ${money(d.price)}.`)},
+  ()=>{const d=pick1(MAINS);return mc("menu",`Which dish has this flavour? "${d.flavour}"`,d.name,distract(d,3).map(x=>x.name),`That is the ${d.name}.`)},
+  ()=>{const d=pick1(MAINS);const a=pick1(d.ing);return mc("menu",`Which of these is in the ${d.name}?`,a,foreignIng(d,3),`The ${d.name} has: ${d.ing.join(", ")}.`)},
+  ()=>{const d=pick1(MAINS.filter(x=>x.ing.length>=3));return mc("menu",`Which of these is NOT in the ${d.name}?`,foreignIng(d,1)[0],pick(d.ing,3),`The ${d.name} has: ${d.ing.join(", ")}.`)},
+  ()=>{const d=pick1(MAINS.filter(x=>x.ing.length>=2));const o=shuffle([...d.ing,...foreignIng(d,Math.max(2,6-d.ing.length))]).slice(0,7);return {t:"multi",cat:"menu",q:`Select everything in the ${d.name}.`,opts:o,ans:d.ing.filter(x=>o.includes(x)),why:`The ${d.name} has: ${d.ing.join(", ")}.`}},
+  ()=>{const [lab,kw,id]=pick1(KEYS);const d=D.find(x=>x.id===id);const w=[...shuffle(MAINS.filter(x=>x.id!==id&&x.s===d.s&&!dishText(x).includes(kw))),...shuffle(MAINS.filter(x=>x.id!==id&&x.s!==d.s&&!dishText(x).includes(kw)))].slice(0,3);return mc("menu",`Which dish contains ${lab}?`,d.name,w.map(x=>x.name),`${d.name} contains ${lab}.`)},
+  ()=>{for(let i=0;i<30;i++){const s=pick(MAINS,4);if(new Set(s.map(x=>x.price)).size<4)continue;const hi=Math.random()<.5;const t=[...s].sort((a,b)=>hi?b.price-a.price:a.price-b.price)[0];return mc("menu",`Which of these is the ${hi?"most":"least"} expensive?`,t.name,s.filter(x=>x!==t).map(x=>x.name),`${t.name} is ${money(t.price)}. ${s.filter(x=>x!==t).map(x=>x.name+" "+money(x.price)).join(", ")}.`)}return GEN.menu[0]()},
+  ()=>{const t=MAINS.filter(x=>x.heat===3)[0];return mc("menu","Which of these is the hottest on the menu?",t.name,pick(MAINS.filter(x=>x.heat<3),3).map(x=>x.name),`${t.name} has the most Scotch bonnet: Scotch bonnet, thyme and smoked garlic butter.`)},
+  ()=>{const d=pick1(MAINS);return mc("menu",`How hot is the ${d.name}?`,LBL[d.heat],LBL.filter((x,i)=>i!==d.heat),`${d.name} is ${LBL[d.heat].toLowerCase()} (our estimate).`)},
+  ()=>{const d=pick1(MAINS);const n=Object.values(SECS).map(s=>s.n);return mc("menu",`Which menu section is the ${d.name} in?`,SECS[d.s].n,n.filter(x=>x!==SECS[d.s].n),`${d.name} is in ${SECS[d.s].n} (${SECS[d.s].t.toLowerCase()}).`)}
+ ],
+ al:[
+  ()=>{const d=pick1(D);const k=pick1([...d.likely,...d.check,...pick(ALL.map(a=>a[0]).filter(a=>!d.likely.includes(a)&&!d.check.includes(a)),1)]);const st=d.likely.includes(k)?"Likely contains it":d.check.includes(k)?"Ask the kitchen":"Nothing flagged";return {t:"mc",cat:"al",q:`${d.name}: what do we know about ${AN[k].toLowerCase()}?`,opts:["Likely contains it","Ask the kitchen","Nothing flagged"],ans:st,why:`${AN[k]} in the ${d.name}: ${st.toLowerCase()} (draft data). Always confirm with the kitchen.`}},
+  ()=>{const d=pick1(D.filter(x=>x.likely.length));const dec=pick(ALL.map(a=>a[0]).filter(a=>!d.likely.includes(a)&&!d.check.includes(a)),Math.max(2,6-d.likely.length));const o=shuffle([...d.likely,...dec]).map(k=>AN[k]);return {t:"multi",cat:"al",q:`Select every allergen flagged as likely in the ${d.name}.`,opts:o,ans:d.likely.map(k=>AN[k]),why:`${d.name}: likely ${d.likely.map(k=>AN[k]).join(", ")}. Ask the kitchen about: ${d.check.map(k=>AN[k]).join(", ")||"nothing extra"}.`}},
+  ()=>{const [k,a]=pick1(ONE);const d=a[0];const w=shuffle(MAINS.filter(x=>x.id!==d.id&&!x.likely.includes(k)&&!x.check.includes(k))).slice(0,3);return mc("al",`A guest cannot have ${AN[k].toLowerCase()}. Which dish must you not recommend?`,d.name,w.map(x=>x.name),`${d.name} is flagged as likely containing ${AN[k].toLowerCase()}. Confirm with the kitchen.`)},
+  ()=>{const d=pick1(D.filter(x=>x.check.length));const k=pick1(d.check);const w=shuffle(MAINS.filter(x=>x.id!==d.id&&!x.likely.includes(k)&&!x.check.includes(k))).slice(0,3);return mc("al",`Which of these needs a kitchen check for ${AN[k].toLowerCase()}?`,d.name,w.map(x=>x.name),`${d.name}: ${AN[k].toLowerCase()} is possible in this kind of dish, so ask the kitchen.`)}
+ ]
+};
+const factQ=f=>({t:"mc",cat:f.c==="history"?"pantry":f.c==="nikkai"?"patois":f.c,q:f.q,ans:f.a,opts:shuffle([f.a,...f.w]),why:f.why});
+const taglineQ=()=>{const T={"Likkle Plates, Nuff Flavour.":"Likkle Bit","Bigga plates. Come share.":"Beg Yuh Some","Every likkle bit counts.":"Pon Di Side","Save a likkle room.":"Sweet Dem Up"};const [t,n]=pick1(Object.entries(T));return mc("patois",`Which menu section has the tagline "${t}"?`,n,Object.values(T).filter(x=>x!==n),`"${t}" belongs to ${n}.`)};
+function makeQs(cat,n){
+  const out=[],seen=new Set();
+  const facts=shuffle(FACTS);let fi=0;
+  const pickFacts=cs=>{while(fi<facts.length){const f=facts[fi++];if(cs.includes(f.c))return factQ(f)}return null};
+  const builders={
+    menu:()=>pick1(GEN.menu)(), al:()=>pick1(GEN.al)(),
+    pantry:()=>pickFacts(["pantry","history"])||pick1(GEN.menu)(),
+    patois:()=>Math.random()<.2?taglineQ():(pickFacts(["patois","nikkai"])||taglineQ())
+  };
+  const weights=cat==="mixed"?["menu","menu","menu","al","pantry","pantry","patois"]:[cat];
+  let guard=0;
+  while(out.length<n&&guard++<400){
+    const q=builders[pick1(weights)]();
+    if(!q||seen.has(q.q))continue;
+    if(q.t!=="type"&&new Set(q.opts).size!==q.opts.length)continue;
+    seen.add(q.q);out.push(q);
   }
-  return shuffle(qs);
+  return out;
 }
+let Q={stage:"setup",cat:"mixed",n:15,exam:false,qs:[],i:0,res:[],sel:new Set(),done:false};
 function renderQuiz(){
   const v=$("#view");
-  if(!Q.qs.length){Q={qs:makeQs(),i:0,score:0,miss:[],done:false,answered:false}}
-  if(Q.done){
-    v.innerHTML=`<div class="q"><p class="sec">Quiz complete</p><p class="score">${Q.score} / ${Q.qs.length}</p>${Q.miss.length?`<p class="lab">Review these</p><ul class="miss">${Q.miss.map(m=>`<li>${esc(m)}</li>`).join("")}</ul>`:`<p>Clean sweep.</p>`}<div class="row" style="margin-top:14px"><button class="btn" id="again">New quiz</button></div></div>`;
-    $("#again").onclick=()=>{Q={qs:[],i:0,score:0,miss:[],done:false,answered:false};renderQuiz()};return;
+  if(Q.stage==="setup"){
+    v.innerHTML=`<div class="q"><p class="sec">Quiz</p><h3>Pick your round</h3>
+    <p class="lab">Topic</p><div class="chips" role="group" aria-label="Topic">${[["mixed","Mixed (hardest)"],["menu","Dishes and ingredients"],["pantry","Pantry and history"],["al","Allergens"],["patois","Patois, words and Nikkai"]].map(([k,n])=>`<button class="chip" aria-pressed="${Q.cat===k}" data-cat="${k}">${n}</button>`).join("")}</div>
+    <p class="lab">Length</p><div class="chips" role="group" aria-label="Length">${[10,15,25].map(n=>`<button class="chip" aria-pressed="${Q.n===n}" data-n="${n}">${n} questions</button>`).join("")}</div>
+    <p class="lab">Mode</p><div class="chips"><button class="chip" aria-pressed="${Q.exam}" id="exam">Exam mode: no feedback until the end</button></div>
+    <p class="nodata">Questions include picking out ingredients, spotting what is NOT in a dish, selecting everything in a dish, typing prices, allergen calls and handbook facts. Allergen answers use the draft data.</p>
+    <div class="row" style="margin-top:12px"><button class="btn" id="start">Start</button></div></div>`;
+    document.querySelectorAll("[data-cat]").forEach(b=>b.onclick=()=>{Q.cat=b.dataset.cat;renderQuiz()});
+    document.querySelectorAll("[data-n]").forEach(b=>b.onclick=()=>{Q.n=+b.dataset.n;renderQuiz()});
+    $("#exam").onclick=()=>{Q.exam=!Q.exam;renderQuiz()};
+    $("#start").onclick=()=>{Q.qs=makeQs(Q.cat,Q.n);Q.i=0;Q.res=[];Q.stage="run";renderQuiz()};
+    return;
   }
-  const q=Q.qs[Q.i];
-  v.innerHTML=`<p class="stat">Question <b>${Q.i+1}</b> of ${Q.qs.length} · score <b>${Q.score}</b></p><div class="bar"><i style="width:${Q.i/Q.qs.length*100}%"></i></div>
-  <div class="q"><h3>${esc(q.q)}</h3><div class="opts">${q.opts.map((o,i)=>`<button class="opt" data-i="${i}">${esc(o)}</button>`).join("")}</div><p class="fb" id="fb" aria-live="polite"></p><div class="row" style="margin-top:12px"><button class="btn" id="nx" hidden>${Q.i===Q.qs.length-1?"See score":"Next"}</button></div></div>`;
-  Q.answered=false;
-  document.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{
-    if(Q.answered)return;Q.answered=true;
-    const o=q.opts[+b.dataset.i],ok=o===q.ans;
-    document.querySelectorAll(".opt").forEach(x=>{if(q.opts[+x.dataset.i]===q.ans)x.classList.add("right")});
-    if(!ok){b.classList.add("wrong");Q.miss.push(q.why)}else Q.score++;
+  if(Q.stage==="done"){
+    const sc=Q.res.filter(r=>r.ok).length,tot=Q.res.length;
+    const by={};Q.res.forEach(r=>{(by[r.cat]=by[r.cat]||[0,0]);by[r.cat][1]++;if(r.ok)by[r.cat][0]++});
+    const miss=Q.res.filter(r=>!r.ok);
+    v.innerHTML=`<div class="q"><p class="sec">Quiz complete</p><p class="score">${sc} / ${tot}</p><p class="stat">${Math.round(sc/tot*100)}%</p>
+    <div class="tags" style="margin-bottom:12px">${Object.entries(by).map(([c,[a,b]])=>`<span class="tag">${CATN[c]}: ${a}/${b}</span>`).join("")}</div>
+    ${miss.length?`<p class="lab">Review (${miss.length} missed)</p><ul class="miss">${miss.map(m=>`<li><b>${esc(m.q)}</b><br>You said: ${esc(m.yours||"no answer")}<br>Answer: ${esc(m.correct)}<br><span class="nodata">${esc(m.why)}</span></li>`).join("")}</ul>`:`<p>Clean sweep.</p>`}
+    <div class="row" style="margin-top:14px"><button class="btn" id="again">New round</button><button class="btn alt" id="redo">Same settings</button></div></div>`;
+    $("#again").onclick=()=>{Q.stage="setup";renderQuiz()};
+    $("#redo").onclick=()=>{Q.qs=makeQs(Q.cat,Q.n);Q.i=0;Q.res=[];Q.sel=new Set();Q.stage="run";renderQuiz()};
+    return;
+  }
+  const q=Q.qs[Q.i];Q.sel=new Set();let locked=false;
+  const last=Q.i===Q.qs.length-1;
+  let body="";
+  if(q.t==="mc")body=`<div class="opts">${q.opts.map((o,i)=>`<button class="opt" data-i="${i}">${esc(o)}</button>`).join("")}</div>`;
+  else if(q.t==="multi")body=`<p class="nodata" style="margin:-6px 0 8px">Select all that apply, then lock in.</p><div class="opts">${q.opts.map((o,i)=>`<button class="opt" data-i="${i}" aria-pressed="false">${esc(o)}</button>`).join("")}</div><div class="row" style="margin-top:10px"><button class="btn" id="lock">Lock in</button></div>`;
+  else body=`<div class="row"><label class="sr" for="ans">Your answer</label><input type="text" inputmode="decimal" id="ans" class="field" placeholder="e.g. 7.50" autocomplete="off"><button class="btn" id="lock">Submit</button></div>`;
+  v.innerHTML=`<p class="stat">Question <b>${Q.i+1}</b> of ${Q.qs.length}${Q.exam?" · exam mode":` · score <b>${Q.res.filter(r=>r.ok).length}</b>`}</p><div class="bar"><i style="width:${Q.i/Q.qs.length*100}%"></i></div>
+  <div class="q"><p class="sec">${CATN[q.cat]}</p><h3>${esc(q.q)}</h3>${body}<p class="fb" id="fb" aria-live="polite"></p><div class="row" style="margin-top:12px"><button class="btn" id="nx" hidden>${last?"See score":"Next"}</button></div></div>`;
+  const finish=(ok,yours,correct)=>{
+    if(locked)return;locked=true;
+    Q.res.push({q:q.q,ok,yours,correct,why:q.why,cat:q.cat});
+    document.querySelectorAll(".opt,#lock,#ans").forEach(x=>x.disabled=true);
+    if(Q.exam){go();return}
     $("#fb").textContent=(ok?"Correct. ":"Not quite. ")+q.why;$("#nx").hidden=false;$("#nx").focus();
-  });
-  $("#nx").onclick=()=>{if(Q.i<Q.qs.length-1){Q.i++}else{Q.done=true}renderQuiz()};
+  };
+  const go=()=>{if(Q.i<Q.qs.length-1){Q.i++}else{Q.stage="done"}renderQuiz()};
+  $("#nx").onclick=go;
+  if(q.t==="mc"){
+    document.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{
+      if(locked)return;const o=q.opts[+b.dataset.i],ok=o===q.ans;
+      if(!Q.exam){document.querySelectorAll(".opt").forEach(x=>{if(q.opts[+x.dataset.i]===q.ans)x.classList.add("right")});if(!ok)b.classList.add("wrong")}
+      finish(ok,o,q.ans);
+    });
+  }else if(q.t==="multi"){
+    document.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{if(locked)return;const i=+b.dataset.i;Q.sel.has(i)?Q.sel.delete(i):Q.sel.add(i);b.classList.toggle("sel",Q.sel.has(i));b.setAttribute("aria-pressed",Q.sel.has(i))});
+    $("#lock").onclick=()=>{
+      if(locked)return;const pickd=[...Q.sel].map(i=>q.opts[i]),ok=pickd.length===q.ans.length&&q.ans.every(a=>pickd.includes(a));
+      if(!Q.exam)document.querySelectorAll(".opt").forEach(x=>{const o=q.opts[+x.dataset.i],isA=q.ans.includes(o),isP=pickd.includes(o);if(isA)x.classList.add("right");else if(isP)x.classList.add("wrong")});
+      finish(ok,pickd.join(", "),q.ans.join(", "));
+    };
+  }else{
+    const sub=()=>{if(locked)return;const raw=$("#ans").value,n=parseFloat(raw.replace(/[£\s]/g,""));finish(Math.abs(n-q.ans)<0.001,raw,money(q.ans))};
+    $("#lock").onclick=sub;$("#ans").onkeydown=e=>{if(e.key==="Enter")sub()};$("#ans").focus();
+  }
 }
 
 /* ---------- Allergens ---------- */
